@@ -24,7 +24,7 @@
     Defining RX and TX pins, because I am using some standard functions
     It may change in later versions
 */
-#define RX_PIN 13
+#define RX_PIN 11
 #define TX_PIN 12
 
 /*
@@ -43,14 +43,6 @@
 #define PULSE_ONE_LENGTH   600 // Transmitter will be HIGH for 600 microseconds
 #define PULSE_ZERO_LENGTH  400 // Transmitter will be HIGH for 400 microseconds
 #define PULSE_READ_TOLERANCE 0.15
-
-// Checks whether pulse read is a ONE pulse
-#define pulseIsOne(PULSE_LENGTH) ( ((PULSE_ONE_LENGTH * (1 - PULSE_READ_TOLERANCE) < PULSE_LENGTH) &&
-                                    (PULSE_LENGTH < PULSE_ONE_LENGTH * (1 + PULSE_READ_TOLERANCE))) ? 1 : 0 )
-
-// Checks whether pulse read is a ZERO pulse
-#define pulseIsZero(PULSE_LENGTH) ( ((PULSE_ZERO_LENGTH * (1 - PULSE_READ_TOLERANCE) < PULSE_LENGTH) &&
-                                     (PULSE_LENGTH < PULSE_ZERO_LENGTH * (1 + PULSE_READ_TOLERANCE))) ? 1 : 0 )
 
 // FUNCTIONS
 
@@ -74,11 +66,8 @@ void TX_MSG(uint8_t message[])
     uint8_t oldSREG = SREG;
     cli();
 
-    // Initialize counter
-    uint8_t index = 0;
-
     // Read and send message
-    for (; index < MSG_LENGTH; index++)
+    for (uint8_t index = 0; index < MSG_LENGTH; index++)
     {
         if (message[index] == 0)
             TX_PULSE_ZERO();
@@ -112,37 +101,53 @@ void RX_MSG(uint8_t message[])
 
     // Assume whole message is invalid first
     for (uint8_t i = 0; i < MSG_LENGTH; i++)
-        message[i] = -1;
+    {
+        message[i] = 255;
+    }
 
     // Get first valid pulse
     do
     {
+        // Wait until you get a pulse
         pulseLength = RX_GET_PULSE(0);
 
+        // Check if pulse is valid
         if (pulseIsOne(pulseLength))
+        {
             message[0] = 1;
+        }
         else if (pulseIsZero(pulseLength))
+        {
             message[0] = 0;
-    } while (message[0] == -1);
+        }
+    } while (message[0] == 255); // That value is initialized in the beginning to -1 = 255 with overflow
 
     // Get starting time
-    unsigned long sTime = micros();
+    unsigned long endTime = micros() + (20 * PULSE_FULL_LENGTH);
 
     // Listen loop
     do
     {
         // Avoid going out of bounds
         if (index == MSG_LENGTH)
+        {
             break;
+        }
 
+        // Time out period is one pulse period
         pulseLength = RX_GET_PULSE(PULSE_FULL_LENGTH);
 
+        // If pulse is a valid 1 or 0 save it, else try again
         if (pulseIsOne(pulseLength))
+        {
             message[index++] = 1;
+        }
         else if (pulseIsZero(pulseLength))
+        {
             message[index++] = 0;
+        }
 
-    } while(micros() - sTime < 20 * PULSE_FULL_LENGTH);
+    } while(micros() < endTime);
 
     // Restore interrupts
     SREG = oldSREG;
@@ -158,13 +163,13 @@ void TX_PULSE_ONE()
     // Save and disable interrupt in TX_MSG
 
     // Set TX to HIGH, TX_PIN = 12
-    PortB |= B00010000;
+    PORTB |= B00010000;
 
     // Wait predefined length of time
     delayMicroseconds(PULSE_ONE_LENGTH);
 
     // Set TX to LOW, TX_PIN = 12
-    PortB &= B11101111;
+    PORTB &= B11101111;
 
     // Wait predefined length of time
     delayMicroseconds(PULSE_FULL_LENGTH - PULSE_ONE_LENGTH);
@@ -182,13 +187,13 @@ void TX_PULSE_ZERO()
     // Save and disable interrupt in TX_MSG
 
     // Set TX to HIGH, TX_PIN = 12
-    PortB |= B00010000;
+    PORTB |= B00010000;
 
     // Wait predefined length of time
     delayMicroseconds(PULSE_ZERO_LENGTH);
 
     // Set TX to LOW, TX_PIN = 12
-    PortB &= B11101111;
+    PORTB &= B11101111;
 
     // Wait predefined length of time
     delayMicroseconds(PULSE_FULL_LENGTH - PULSE_ZERO_LENGTH);
@@ -211,4 +216,27 @@ unsigned long RX_GET_PULSE(uint16_t timeOut)
 
     // Else
     return pulseIn(RX_PIN, HIGH, timeOut);
+}
+
+int pulseIsOne(uint16_t pulseLength)
+{
+    // Sacrifice speed for easy code
+    if (pulseLength < ((1 - PULSE_READ_TOLERANCE) * PULSE_ONE_LENGTH))
+        return 0;
+    if (pulseLength > ((1 + PULSE_READ_TOLERANCE) * PULSE_ONE_LENGTH))
+        return 0;
+    // If pulse length not out of bounds
+    return 1;
+}
+
+
+int pulseIsZero(uint16_t pulseLength)
+{
+    // Sacrifice speed for easy code
+    if (pulseLength < ((1 - PULSE_READ_TOLERANCE) * PULSE_ZERO_LENGTH))
+        return 0;
+    if (pulseLength > ((1 + PULSE_READ_TOLERANCE) * PULSE_ZERO_LENGTH))
+        return 0;
+    // If pulse length not out of bounds
+    return 1;
 }

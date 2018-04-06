@@ -74,4 +74,7 @@ void TX_PULSE_ZERO();
 */
 unsigned long RX_GET_PULSE(uint16_t timeOut);
 
+int pulseIsOne(uint16_t pulseLength);
+int pulseIsZero(uint16_t pulseLength);
+
 #endif // End of header definition
