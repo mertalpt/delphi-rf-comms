@@ -12,10 +12,8 @@
 */
 
 // INCLUDES
+#include "Arduino.h"
 #include "Delphi.h"
-// To access lower level parts of microcontroller
-#include "avr/io.h"
-#include "avr/delay.h"
 
 // MACROS AND DEFINITIONS
 
@@ -41,10 +39,10 @@
     Each pulse will be checked with (1-tolerance)*definedLength < pulse < (1+tolerance)*definedLength
     where definedLength is lengths of ONE and ZERO pulses to see whether pulse read is a ONE, ZERO or undefined
 */
-#define PULSE_FULL_LENGTH = 1000; // microseconds
-#define PULSE_ONE_LENGTH = 600;   // Transmitter will be HIGH for 600 microseconds
-#define PULSE_ZERO_LENGTH = 400;  // Transmitter will be HIGH for 400 microseconds
-#define PULSE_READ_TOLERANCE = 0.15;
+#define PULSE_FULL_LENGTH 1000 // microseconds
+#define PULSE_ONE_LENGTH   600 // Transmitter will be HIGH for 600 microseconds
+#define PULSE_ZERO_LENGTH  400 // Transmitter will be HIGH for 400 microseconds
+#define PULSE_READ_TOLERANCE 0.15
 
 // Checks whether pulse read is a ONE pulse
 #define pulseIsOne(PULSE_LENGTH) ( ((PULSE_ONE_LENGTH * (1 - PULSE_READ_TOLERANCE) < PULSE_LENGTH) &&
@@ -70,7 +68,7 @@ void DELPHI_SET_DEFAULTS()
     Transmits 16 bits given in the input uint8_t array
     Zero is transmitted as 0, anything else is transmitted as 1
 */
-void TX_MSG(uint8_t[] message)
+void TX_MSG(uint8_t message[])
 {
     // Disable and save interrupts
     uint8_t oldSREG = SREG;
@@ -100,7 +98,7 @@ void TX_MSG(uint8_t[] message)
 
     Returns the message in the input array
 */
-void RX_MSG(uint8_t[] message)
+void RX_MSG(uint8_t message[])
 {
     // Disable and save interrupts
     uint8_t oldSREG = SREG;
