@@ -1,80 +1,92 @@
 /*
-    Basic 433 MHz RF Communication Library for Arduino
-    Currently working on sending bitstreams only
-    Fancy features will/may be added later
+    Basic 433 MHz RF Communication Library tested on Arduino Uno.
 
-    IMPORTANT:
-    - Designed and tested on Arduino UNO, may not work on other boards
-    - Default transmitter pin is digital pin 12, do not use this pin for anything else
-    - Default receiver pin is digital pin 13, do not use this pin for anything else
+    Author: Mert Alp Taytak (mertalptaytak@gmail.com)
 
-    Author: Mert Alp Taytak
+    Currently it sends and receives predefined amount of bits.
+
+    Default pins:
+    - Receiver pin:    Digital Pin 11
+    - Transmitter pin: Digital Pin 12
+    * Transmitter pin is used with port manipulation, so it is hardcoded
+    into the library. Please look at TX_TOGGLE_STATE function to change it.
+
+    Default communication specifications:
+    - Message length: 8 bits
+    - Transmission speed: 100 bits per second
+    * I am hoping to increase these in the future.
+
+    Bit encoding logic:
+        There is a predefined BIT_PERIOD.
+    ---__ is the waveform of bit 1, where HIGH pulse is 0.6 length of BIT_PERIOD
+    --___ is the waveform of bit 0, where HIGH pulse is 0.4 length of BIT_PERIOD
+
+    Bit decoding logic:
+        There are predefined lower and upper bounds for BIT_ONE and BIT_ZERO
+    which are calculated according to BIT_PERIOD and encoding logic.
+        Pulse read is then checked with these bounds to determine if it is a
+    valid bit.
 */
 
 #ifndef __DELPHI_H_
 #define __DELPHI_H_
 
 // INCLUDES
+
 #include "Arduino.h"
 
-// MACROS and DEFINITIONS
+// DEFINITIONS and MACROS
+
+// None.
+
+// GENERAL FUNCTIONS
 
 /*
-    These are only to show default values, do not comment out
-    Values are hardcoded in the functions
-    #define TX_PIN = 12;     // Default transmitter pin
-    #define RX_PIN = 13;     // Default receiver pin
-    #define MSG_LENGTH = 16; // Default message length
-*/
-
-// FUNCTIONS
-
-/*
-    Call before using DELPHI, preferably in setup
-    Sets correct I/O to RX and TX pins
+    Default configuration:
+    - Receiver pin:    Digital Pin 11, INPUT
+    - Transmitter pin: Digital Pin 12, OUTPUT
 */
 void DELPHI_SET_DEFAULTS();
 
-/*
-    Transmits 16 bits given in the input uint8_t array
-    Zero is transmitted as 0, anything else is transmitted as 1
-*/
-void TX_MSG(uint8_t message[]);
+// RECEIVER FUNCTIONS
 
 /*
-    Listens to transmissions on the receiver pin until it receives a signal
-    After the first bit is received,
-    if the message is not fully transmitted in the following 20 bit period,
-    fills rest of the return message with -1(= 255 due to overflow)
-
-    Returns the message in the input array
+    Takes input value, compares with bit encoded pulse lengths
+    Returns 0 if bit is 0, 1 if bit is 1, 255 if else
 */
-void RX_MSG(uint8_t message[]);
+uint8_t RX_DECODE_SIGNAL(unsigned long pulseLength);
 
 /*
-    Sends a HIGH pulse on the transmitter pin for the hardcoded duration
-    Pulse length is in microseconds
-    Maximum length is 65535 microseconds by the limitation of 16 bits
+    Takes input uint8_t array,
+    Listens to pulses for predefined amount of bit periods
+    If it receives valid pulses meanwhile it is written into array
 */
-void TX_PULSE_ONE();
+void RX_LISTEN(uint8_t arr[]);
+
+
+// TRANSMITTER FUNCTIONS
 
 /*
-    Sends a LOW pulse on the transmitter pin for the hardcoded duration
-    Pulse length is in microseconds
-    Maximum length is 65535 microseconds by the limitation of 16 bits
+    Writes LOW to transmitter pin if state is 0
+    Writes HIGH to transmitter pin if state is not 0
+    It is equivalent to digitalWrite(),
+    except it is hardcoded to change
+    transmitter pin only for faster state change.
 */
-void TX_PULSE_ZERO();
+void TX_TOGGLE_STATE(uint8_t state);
 
 /*
-    ***Currently using library functions until I find a faster solution***
-
-    Waits until timeOut microseconds on the receiver pin to turn HIGH
-    If times out, returns 0
-    Else, returns the duration of the pulse in microseconds
+    This function is used before transmitting a message
+    to clear noise from the receiver module.
+    It sends very short 1-0 pulses repeatedly.
 */
-unsigned long RX_GET_PULSE(uint16_t timeOut);
+void TX_SEND_TRAINER();
 
-int pulseIsOne(uint16_t pulseLength);
-int pulseIsZero(uint16_t pulseLength);
+/*
+    Takes input uint8_t array of predefined size,
+    Sends bit encoded 0 if element at index is 0,
+    Sends bit encoded 1 if element at index is not 0.
+*/
+void TX_SEND(uint8_t *arr);
 
-#endif // End of header definition
+#endif // End of define Delphi.h

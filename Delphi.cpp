@@ -1,242 +1,203 @@
 /*
-    Basic 433 MHz RF Communication Library for Arduino
-    Currently working on sending bitstreams only
-    Fancy features will/may be added later
+    Implementation of Delphi Library
 
-    IMPORTANT:
-    - Designed and tested on Arduino UNO, may not work on other boards
-    - Default transmitter pin is digital pin 12, do not use this pin for anything else
-    - Default receiver pin is digital pin 13, do not use this pin for anything else
+    Look at the header file for details.
 
-    Author: Mert Alp Taytak
+    ABOUT THE COMMENTED OUT CODE IN TX_SEND and RX_LISTEN:
+    It seems that disabling interrupts interfere with serial communication
+    of the Arduino board. Also, time out logic is too slow to work currently.
+    I will be looking into solutions.
 */
 
 // INCLUDES
-#include "Arduino.h"
+
 #include "Delphi.h"
 
-// MACROS AND DEFINITIONS
+// DEFINITIONS and MACROS
 
-// Predefined message length is 16 bits
-#define MSG_LENGTH 16
-
-/*
-    Defining RX and TX pins, because I am using some standard functions
-    It may change in later versions
-*/
 #define RX_PIN 11
 #define TX_PIN 12
 
-/*
-    Pulse waveform for 1 is: ---__
-    Pulse waveform for 0 is: --___
-    This is done to balance time spent at LOW and HIGH
+#define MESSAGE_LENGTH        8 // bits
 
-    When reading the pulse,
-    tolerance modifier should be less than 0.2 to avoid mixing up signals
+#define BIT_PERIOD        10000 // microseconds
+#define BIT_ONE_MODIFIER    0.6 // 60 percent of full pulse is HIGH for bit 1
+#define BIT_ZERO_MODIFIER   0.4 // 40 percent of full pulse is HIGH for bit 0
+#define BIT_TOLERANCE      0.10 // Should be <0.2 with current bit modifiers
+#define TRAINER_PERIOD       50 // microseconds
+#define TRAINER_REPEATS      40 // times
+//#define NOISE_TOLERANCE       0 // noise signals between valid signals are tolerated
 
-    Workings of the tolerance:
-    Each pulse will be checked with (1-tolerance)*definedLength < pulse < (1+tolerance)*definedLength
-    where definedLength is lengths of ONE and ZERO pulses to see whether pulse read is a ONE, ZERO or undefined
-*/
-#define PULSE_FULL_LENGTH 1000 // microseconds
-#define PULSE_ONE_LENGTH   600 // Transmitter will be HIGH for 600 microseconds
-#define PULSE_ZERO_LENGTH  400 // Transmitter will be HIGH for 400 microseconds
-#define PULSE_READ_TOLERANCE 0.15
-
-// FUNCTIONS
+// GENERAL FUNCTIONS
 
 /*
-    Call before using DELPHI, preferably in setup
-    Sets correct I/O to RX and TX pins
+    Default configuration:
+    - Receiver pin:    Digital Pin 11, INPUT
+    - Transmitter pin: Digital Pin 12, OUTPUT
 */
 void DELPHI_SET_DEFAULTS()
 {
+    // Performance is not important in this case
     pinMode(RX_PIN, INPUT);
     pinMode(TX_PIN, OUTPUT);
+    digitalWrite(TX_PIN, LOW);
+}
+
+// RECEIVER FUNCTIONS
+
+/*
+    Takes input value, compares with bit encoded pulse lengths
+    Returns 0 if bit is 0, 1 if bit is 1, 255 if else
+*/
+uint8_t RX_DECODE_SIGNAL(unsigned long pulseLength)
+{
+    if (((1 - BIT_TOLERANCE) * BIT_ZERO_MODIFIER * BIT_PERIOD < pulseLength) && ((1 + BIT_TOLERANCE) * BIT_ZERO_MODIFIER * BIT_PERIOD > pulseLength))
+    {
+        return 0;
+    }
+    if (((1 - BIT_TOLERANCE) * BIT_ONE_MODIFIER * BIT_PERIOD < pulseLength) && ((1 + BIT_TOLERANCE) * BIT_ONE_MODIFIER * BIT_PERIOD > pulseLength))
+    {
+        return 1;
+    }
+
+    // If pulse is not valid
+    return 255;
 }
 
 /*
-    Transmits 16 bits given in the input uint8_t array
-    Zero is transmitted as 0, anything else is transmitted as 1
+    Takes input uint8_t array,
+    Listens to pulses for predefined amount of bit periods
+    If it receives valid pulses meanwhile it is written into array
 */
-void TX_MSG(uint8_t message[])
+void RX_LISTEN(uint8_t arr[])
 {
     // Disable and save interrupts
-    uint8_t oldSREG = SREG;
-    cli();
+    //uint8_t oldSREG = SREG;
+    //cli();
 
-    // Read and send message
-    for (uint8_t index = 0; index < MSG_LENGTH; index++)
+    // Initialize counters
+    uint16_t counter = 0;
+    //uint8_t noiseCounter = 0;
+
+    // Variable to hold pulse readings
+    unsigned long pulse;
+    uint8_t pulseDecoded;
+
+    // Calculate timeout
+    //unsigned long timeout = micros() + (MESSAGE_LENGTH * BIT_PERIOD);
+
+    // Read pulses
+    while ((counter < MESSAGE_LENGTH) /*&& (micros() < timeout)*/)
     {
-        if (message[index] == 0)
-            TX_PULSE_ZERO();
-        else
-            TX_PULSE_ONE();
+        // Reset noise counter
+        //noiseCounter = 0;
+
+        do
+        {
+            // pulseIn is a standart Arduino function
+            pulse = pulseIn(RX_PIN, HIGH/*, BIT_PERIOD*/);
+
+            // Decode pulse
+            pulseDecoded = RX_DECODE_SIGNAL(pulse);
+
+            // Increment noise counter if pulse is noise
+            //if (pulseDecoded == 255)
+            //    noiseCounter++;
+
+        } while (pulseDecoded == 255); // Repeat until you get a valid signal
+
+        // There is a valid reading and it did not come from random noise
+        //if (noiseCounter <= NOISE_TOLERANCE)
+            arr[counter++] = pulseDecoded;
     }
 
-    // Restore interrupt
-    SREG = oldSREG;
-}
-
-/*
-    Listens to transmissions on the receiver pin until it receives a signal
-    After the first bit is received,
-    if the message is not fully transmitted in the following 20 bit period,
-    fills rest of the return message with -1(= 255 due to overflow)
-
-    Returns the message in the input array
-*/
-void RX_MSG(uint8_t message[])
-{
-    // Disable and save interrupts
-    uint8_t oldSREG = SREG;
-    cli();
-
-    // Initialize counter
-    uint8_t index = 1;
-
-    // Declare variable to hold pulse lengths
-    unsigned long pulseLength;
-
-    // Assume whole message is invalid first
-    for (uint8_t i = 0; i < MSG_LENGTH; i++)
+    // If there was a timeout, fill the rest of the array with 255
+    for (; counter < MESSAGE_LENGTH; counter++)
     {
-        message[i] = 255;
+        arr[counter] = 255;
     }
-
-    // Get first valid pulse
-    do
-    {
-        // Wait until you get a pulse
-        pulseLength = RX_GET_PULSE(0);
-
-        // Check if pulse is valid
-        if (pulseIsOne(pulseLength))
-        {
-            message[0] = 1;
-        }
-        else if (pulseIsZero(pulseLength))
-        {
-            message[0] = 0;
-        }
-    } while (message[0] == 255); // That value is initialized in the beginning to -1 = 255 with overflow
-
-    // Get starting time
-    unsigned long endTime = micros() + (20 * PULSE_FULL_LENGTH);
-
-    // Listen loop
-    do
-    {
-        // Avoid going out of bounds
-        if (index == MSG_LENGTH)
-        {
-            break;
-        }
-
-        // Time out period is one pulse period
-        pulseLength = RX_GET_PULSE(PULSE_FULL_LENGTH);
-
-        // If pulse is a valid 1 or 0 save it, else try again
-        if (pulseIsOne(pulseLength))
-        {
-            message[index++] = 1;
-        }
-        else if (pulseIsZero(pulseLength))
-        {
-            message[index++] = 0;
-        }
-
-    } while(micros() < endTime);
 
     // Restore interrupts
-    SREG = oldSREG;
+    //SREG = oldSREG;
+}
+
+
+// TRANSMITTER FUNCTIONS
+
+/*
+    Writes LOW to transmitter pin if state is 0
+    Writes HIGH to transmitter pin if state is not 0
+    It is equivalent to digitalWrite(),
+    except it is hardcoded to change
+    transmitter pin only for faster state change.
+*/
+void TX_TOGGLE_STATE(uint8_t state)
+{
+    // Port manipulation, TX_PIN = 12 is in PORTB
+    if (state == 0)
+    {
+        // Write 0 to TX_PIN, do not touch anything else
+        PORTB &= B11101111;
+    }
+    else
+    {
+        // Write 1 to TX_PIN, do not touch anything else
+        PORTB |= B00010000;
+    }
 }
 
 /*
-    Sends a ONE-ENCODED pulse on the transmitter pin for the hardcoded duration
-    Pulse length is in microseconds
-    Maximum length is 65535 microseconds by the limitation of 16 bits
+    This function is used before transmitting a message
+    to clear noise from the receiver module.
+    It sends very short 1-0 pulses repeatedly.
 */
-void TX_PULSE_ONE()
+void TX_SEND_TRAINER()
 {
-    // Save and disable interrupt in TX_MSG
-
-    // Set TX to HIGH, TX_PIN = 12
-    PORTB |= B00010000;
-
-    // Wait predefined length of time
-    delayMicroseconds(PULSE_ONE_LENGTH);
-
-    // Set TX to LOW, TX_PIN = 12
-    PORTB &= B11101111;
-
-    // Wait predefined length of time
-    delayMicroseconds(PULSE_FULL_LENGTH - PULSE_ONE_LENGTH);
-
-    // Restore interrupt in TX_MSG
+    for (uint8_t counter = 0; counter < TRAINER_REPEATS; counter++)
+    {
+        TX_TOGGLE_STATE(1);
+        delayMicroseconds(TRAINER_PERIOD / 2);
+        TX_TOGGLE_STATE(0);
+        delayMicroseconds(TRAINER_PERIOD / 2);
+    }
 }
 
 /*
-    Sends a ZERO-ENCODED pulse on the transmitter pin for the hardcoded duration
-    Pulse length is in microseconds
-    Maximum length is 65535 microseconds by the limitation of 16 bits
+    Takes input uint8_t array of predefined size,
+    Sends bit encoded 0 if element at index is 0,
+    Sends bit encoded 1 if element at index is not 0.
 */
-void TX_PULSE_ZERO()
+void TX_SEND(uint8_t *arr)
 {
-    // Save and disable interrupt in TX_MSG
+    // Disable and save interrupts
+    //uint8_t oldSREG = SREG;
+    //cli();
 
-    // Set TX to HIGH, TX_PIN = 12
-    PORTB |= B00010000;
+    // Send trainer
+    TX_SEND_TRAINER();
 
-    // Wait predefined length of time
-    delayMicroseconds(PULSE_ZERO_LENGTH);
+    // Send message
+    for (uint8_t index = 0; index < MESSAGE_LENGTH; index++)
+    {
+        if (arr[index] == 0) // Send 0
+        {
+            TX_TOGGLE_STATE(1);
+            delayMicroseconds(BIT_PERIOD * BIT_ZERO_MODIFIER);
+            TX_TOGGLE_STATE(0);
+            delayMicroseconds(BIT_PERIOD * (1 - BIT_ZERO_MODIFIER));
+        }
+        else // Send 1
+        {
+            TX_TOGGLE_STATE(1);
+            delayMicroseconds(BIT_PERIOD * BIT_ONE_MODIFIER);
+            TX_TOGGLE_STATE(0);
+            delayMicroseconds(BIT_PERIOD * (1 - BIT_ONE_MODIFIER));
+        }
+    }
 
-    // Set TX to LOW, TX_PIN = 12
-    PORTB &= B11101111;
+    // Send trainer
+    TX_SEND_TRAINER();
 
-    // Wait predefined length of time
-    delayMicroseconds(PULSE_FULL_LENGTH - PULSE_ZERO_LENGTH);
-
-    // Restore interrupt in TX_MSG
-}
-
-/*
-    ***Currently using library functions until I find a faster solution***
-
-    Waits until timeOut microseconds on the receiver pin to turn HIGH
-    If timeOut == 0, there is no time out
-    If times out, returns 0
-    Else, returns the duration of the pulse in microseconds
-*/
-unsigned long RX_GET_PULSE(uint16_t timeOut)
-{
-    if (timeOut == 0)
-        return pulseIn(RX_PIN, HIGH);
-
-    // Else
-    return pulseIn(RX_PIN, HIGH, timeOut);
-}
-
-int pulseIsOne(uint16_t pulseLength)
-{
-    // Sacrifice speed for easy code
-    if (pulseLength < ((1 - PULSE_READ_TOLERANCE) * PULSE_ONE_LENGTH))
-        return 0;
-    if (pulseLength > ((1 + PULSE_READ_TOLERANCE) * PULSE_ONE_LENGTH))
-        return 0;
-    // If pulse length not out of bounds
-    return 1;
-}
-
-
-int pulseIsZero(uint16_t pulseLength)
-{
-    // Sacrifice speed for easy code
-    if (pulseLength < ((1 - PULSE_READ_TOLERANCE) * PULSE_ZERO_LENGTH))
-        return 0;
-    if (pulseLength > ((1 + PULSE_READ_TOLERANCE) * PULSE_ZERO_LENGTH))
-        return 0;
-    // If pulse length not out of bounds
-    return 1;
+    // Restore interrupts
+    //SREG = oldSREG;
 }
