@@ -2,7 +2,7 @@
 
 Basic 433 MHz RF Communication Library tested on Arduino Uno.
 
-Author: Mert Alp Taytak (mertalptaytak@gmail.com)
+    Author: Mert Alp Taytak (mertalptaytak@gmail.com)
 
 Currently it sends and receives predefined amount of bits.
 
@@ -23,15 +23,16 @@ Default communication specifications:
 
 Bit encoding logic:
 
-
-    There is a predefined BIT_PERIOD.
+There is a predefined BIT_PERIOD.
 
 ---__ is the waveform of bit 1, where HIGH pulse is 0.6 length of BIT_PERIOD
 
 --___ is the waveform of bit 0, where HIGH pulse is 0.4 length of BIT_PERIOD
 
 Bit decoding logic:
-    There are predefined lower and upper bounds for BIT_ONE and BIT_ZERO
+
+There are predefined lower and upper bounds for BIT_ONE and BIT_ZERO
 which are calculated according to BIT_PERIOD and encoding logic.
-    Pulse read is then checked with these bounds to determine if it is a
+
+Pulse read is then checked with these bounds to determine if it is a
 valid bit.
