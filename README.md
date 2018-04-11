@@ -9,13 +9,13 @@ Currently it sends and receives predefined amount of bits.
 Default pins:
   - Receiver pin:    Digital Pin 11
   - Transmitter pin: Digital Pin 12
-* Transmitter pin is used with port manipulation, so it is hardcoded
+\* Transmitter pin is used with port manipulation, so it is hardcoded
 into the library. Please look at TX_TOGGLE_STATE function to change it.
 
 Default communication specifications:
   - Message length: 8 bits
   - Transmission speed: 100 bits per second
-* I am hoping to increase these in the future.
+\* I am hoping to increase these in the future.
 
 Bit encoding logic:
     There is a predefined BIT_PERIOD.
