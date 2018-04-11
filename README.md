@@ -2,7 +2,7 @@
 
 Basic 433 MHz RF Communication Library tested on Arduino Uno.
 
-    Author: Mert Alp Taytak (mertalptaytak@gmail.com)
+> Author: Mert Alp Taytak (mertalptaytak@gmail.com)
 
 Currently it sends and receives predefined amount of bits.
 
